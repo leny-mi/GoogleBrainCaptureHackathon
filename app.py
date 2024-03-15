@@ -9,7 +9,7 @@ from src.data.processing import load_data_dict, get_data
 from src.data.conf.eeg_annotations import braincapture_annotations
 from src.data.conf.eeg_channel_picks import hackathon
 from src.data.conf.eeg_channel_order import standard_19_channel
-from src.data.conf.eeg_annotations import braincapture_annotations, tuh_eeg_artefact_annotations
+from src.data.conf.eeg_annotations import braincapture_annotations, tuh_eeg_artefact_annotations, tuh_eeg_index_to_articfact_annotations
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
@@ -27,11 +27,35 @@ from model.model import BendrEncoder
 from model.model import Flatten
 from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca
+import icecream as ic
+import xgboost as xgb
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
-DURATION = 60
+DURATION = 10
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = 'cpu'
+models_directory = 'src/classifiers/'
+n_labels = 5
+
+
+def classify(X_new):
+    loaded_models = []
+
+    for i in range(n_labels):
+        model_filename = os.path.join(models_directory, f"xgb_model_label_{i}.json")
+        bst = xgb.Booster()  # Instantiate model
+        bst.load_model(model_filename)  # Load model
+        loaded_models.append(bst)
+        print(f"Model loaded from {model_filename}")
+
+    dnew = xgb.DMatrix(X_new)
+
+    new_predictions = np.zeros((X_new.shape[0], n_labels))
+
+    for i, model in enumerate(loaded_models):
+        new_predictions[:, i] = model.predict(dnew)
+    new_predictions_binary = (new_predictions > 0.5).astype(int)
+    return new_predictions_binary
 
 def generate_latent_representations(data, encoder, batch_size=5, device='cpu'):
     """ Generate latent representations for the given data using the given encoder.
@@ -137,29 +161,51 @@ def main():
         if st.button("Process data"):
             st.write("Data processing initiated")
           
-            # 2: Chop the .edf data into 5 second windows
-            data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=braincapture_annotations, tlen=5, labels=False)
-            all_subjects = list(data_dict.keys())
-            X = get_data(data_dict, all_subjects)
+            # # 2: Chop the .edf data into 5 second windows
 
-            # 3: Load the model and generate latent representations
+            # Change annnotation dictionary
+
+            data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=tuh_eeg_artefact_annotations, stop_after=None, duration=DURATION)
+            all_subjects = list(data_dict.keys())
+            print(all_subjects)
+            print(data_dict)
+            X, _ = get_data(data_dict, all_subjects)
+
+            # # 3: Load the model and generate latent representations
             encoder = load_model(device)   
             latent_representations = generate_latent_representations(X, encoder, device=device)
 
-            # 4: Perform KMeans clustering on the latent representations
-            st.write("Running K-means with n=5 clusters")
-            kmeans = KMeans(n_clusters=5, random_state=42)
-            kmeans.fit(latent_representations)
-            labels = kmeans.labels_
+            print(latent_representations)
 
-            # 5: Visualize the clusters using PCA 
-            st.write("Visualising clusters using PCA")  
-            # Apply PCA
-            pca = PCA(n_components=2)
-            components = pca.fit_transform(latent_representations)
+            classification = classify(latent_representations)
 
-            # Plot clusters
-            plot_clusters(components, labels)
+            print(classification)
+
+
+            output = []
+            for w_idx, window in enumerate(classification):
+                for l_idx, label in enumerate(window):
+                    if label == 1:
+                        output.append((w_idx, l_idx))
+            print(output)
+            for w_idx, l_idx in output:
+                time = w_idx * DURATION
+                st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+
+            # # 4: Perform KMeans clustering on the latent representations
+            # st.write("Running K-means with n=5 clusters")
+            # kmeans = KMeans(n_clusters=5, random_state=42)
+            # kmeans.fit(latent_representations)
+            # labels = kmeans.labels_
+
+            # # 5: Visualize the clusters using PCA 
+            # st.write("Visualising clusters using PCA")  
+            # # Apply PCA
+            # pca = PCA(n_components=2)
+            # components = pca.fit_transform(latent_representations)
+
+            # # Plot clusters
+            # plot_clusters(components, labels)
 
 
 
