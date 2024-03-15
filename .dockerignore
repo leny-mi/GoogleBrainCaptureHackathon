@@ -1,0 +1,23 @@
+# Ignore git and cache directories
+.git
+.cache
+
+# Ignore logs
+*.log
+
+# Ignore node modules
+references
+
+notebooks
+
+data
+
+assets
+
+README.md
+
+# pycache everywhere in the project
+__pycache__
+
+# Ignore any .env files
+.env
