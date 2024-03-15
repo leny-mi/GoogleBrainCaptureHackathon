@@ -1,5 +1,7 @@
 # app.py
+from src.data.utils.eeg import get_raw
 import streamlit as st
+st.set_page_config(layout="wide")
 import pandas as pd
 import sys
 import os
@@ -14,6 +16,8 @@ from tqdm import tqdm
 from copy import deepcopy
 from model.model import BendrEncoder
 import xgboost as xgb
+from plotly.graph_objs import Layout, YAxis, Scatter, Annotation, Annotations, Data, Figure, Font
+import mne
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
 DURATION = 10
@@ -91,22 +95,20 @@ def get_file_paths(edf_file_buffers):
 
     output: paths: paths to the files
     """
-    paths = []
     # make tempoary directory to store the files
     temp_dir = tempfile.mkdtemp()
     print(temp_dir)
-    for edf_file_buffer in edf_file_buffers:
-        folder_name = os.path.join(temp_dir, edf_file_buffer.name[:4])
-        make_dir(folder_name)
-        # make tempoary file
-        path = os.path.join(folder_name , edf_file_buffer.name)
-        # write bytesIO object to file
-        with open(path, 'wb') as f:
-            f.write(edf_file_buffer.getvalue())
+    edf_file_buffer = edf_file_buffers
+    folder_name = os.path.join(temp_dir, edf_file_buffer.name[:4])
+    make_dir(folder_name)
+    # make tempoary file
+    path = os.path.join(folder_name , edf_file_buffer.name)
+    # write bytesIO object to file
+    with open(path, 'wb') as f:
+        f.write(edf_file_buffer.getvalue())
 
-        paths.append(path)
 
-    return temp_dir + '/', paths
+    return temp_dir + '/', path
 
 def plot_clusters(components, labels):
     """
@@ -129,6 +131,40 @@ def plot_clusters(components, labels):
 
     st.pyplot(fig)
 
+def plot_raw(raw, st, range_from, range_to):
+
+    picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False, stim=False)
+    start, stop = raw.time_as_index([range_from, range_to])
+
+    n_channels = min(len(picks), 20)
+    data, times = raw[picks[:n_channels], start:stop]
+    ch_names = [raw.info['ch_names'][p] for p in picks[:n_channels]]
+
+    step = 1. / n_channels
+    kwargs = dict(domain=[1 - step, 1], showticklabels=False, zeroline=False, showgrid=False)
+
+    # create objects for layout and traces
+    layout = Layout(yaxis=YAxis(kwargs), showlegend=False)
+    traces = [Scatter(x=times, y=data.T[:, 0])]
+
+    # loop over the channels
+    for ii in range(1, n_channels):
+        kwargs.update(domain=[1 - (ii + 1) * step, 1 - ii * step])
+        layout.update({'yaxis%d' % (ii + 1): YAxis(kwargs), 'showlegend': False})
+        traces.append(Scatter(x=times, y=data.T[:, ii], yaxis='y%d' % (ii + 1)))
+
+    # add channel names using Annotations
+    annotations = Annotations([Annotation(x=-0.06, y=0, xref='paper',   yref='y%d' % (ii + 1),
+                                        text=ch_name, font=Font(size=9), showarrow=False)
+                            for ii, ch_name in enumerate(ch_names)])
+    layout.update(annotations=annotations)
+
+    # set the size of the figure and plot it
+    layout.update(autosize=False, width=1000, height=700)
+    fig = Figure(data=Data(traces), layout=layout)
+    st.plotly_chart(fig)
+    #py.iplot(fig, filename='shared xaxis')
+
 def main():
     st.title('Demonstration of EEG data pipeline')
     st.write("""
@@ -136,20 +172,20 @@ def main():
              """)
     
     # 1: Upload EDF files
-    edf_file_buffers = st.file_uploader('Upload .EDF files', type='edf', accept_multiple_files=True)
-    
+    edf_file_buffers = st.file_uploader('Upload .EDF files', type='edf', accept_multiple_files=False)
 
     if edf_file_buffers:
-        data_folder, file_paths = get_file_paths(edf_file_buffers)
+        print("C", edf_file_buffers)
+        data_folder, file_path = get_file_paths(edf_file_buffers)
         
+        raw = mne.io.read_raw_edf(file_path, preload=True)
         
         if st.button("Process data"):
             st.write("Data processing initiated")
+
+            
+            #plot_raw(raw, st)
           
-            # # 2: Chop the .edf data into 5 second windows
-
-            # Change annnotation dictionary
-
             data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=tuh_eeg_artefact_annotations, stop_after=None, duration=DURATION)
             all_subjects = list(data_dict.keys())
             print(all_subjects)
@@ -160,12 +196,7 @@ def main():
             encoder = load_model(device)   
             latent_representations = generate_latent_representations(X, encoder, device=device)
 
-            print(latent_representations)
-
             classification = classify(latent_representations)
-
-            print(classification)
-
 
             output = []
             for w_idx, window in enumerate(classification):
@@ -174,8 +205,9 @@ def main():
                         output.append((w_idx, l_idx))
             print(output)
             for w_idx, l_idx in output:
-                time = w_idx * DURATION
+                time = w_idx * DURATION // 2
                 st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+                plot_raw(raw, st, time, time + DURATION)
 
             # # 4: Perform KMeans clustering on the latent representations
             # st.write("Running K-means with n=5 clusters")
