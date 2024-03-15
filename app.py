@@ -236,7 +236,7 @@ def main():
             print(output)
             for w_idx, l_idx in output:
                 time = w_idx * DURATION
-                st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+                # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
 
             # Visualize
             data = mne.io.read_raw_edf(file_paths[0], preload=True)
@@ -254,7 +254,7 @@ def main():
                             on_change=draw_plot)
                 for w_idx, l_idx in output:
                     time = w_idx * DURATION // 2
-                    st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+                    # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
                     st.button(label=f"{tuh_eeg_index_to_articfact_annotations[l_idx]}: {time} - {time + DURATION}",
                                 on_click=change_time,
                                 args=(time,))
