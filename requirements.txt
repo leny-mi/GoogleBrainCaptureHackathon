@@ -10,3 +10,4 @@ torch
 scipy
 pyedflib
 streamlit==1.32.1
+xgboost

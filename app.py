@@ -4,30 +4,15 @@ import pandas as pd
 import sys
 import os
 sys.path.append(os.getcwd() + '/')
-from src.data.utils.eeg import get_raw
 from src.data.processing import load_data_dict, get_data
-from src.data.conf.eeg_annotations import braincapture_annotations
-from src.data.conf.eeg_channel_picks import hackathon
-from src.data.conf.eeg_channel_order import standard_19_channel
-from src.data.conf.eeg_annotations import braincapture_annotations, tuh_eeg_artefact_annotations, tuh_eeg_index_to_articfact_annotations
-from sklearn import datasets
-from sklearn.model_selection import train_test_split
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, balanced_accuracy_score
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from src.data.conf.eeg_annotations import  tuh_eeg_artefact_annotations, tuh_eeg_index_to_articfact_annotations
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 import tempfile
 import torch
 from tqdm import tqdm
 from copy import deepcopy
 from model.model import BendrEncoder
-from model.model import Flatten
-from sklearn.cluster import KMeans
-from src.visualisation.visualisation import plot_latent_pca
-import icecream as ic
 import xgboost as xgb
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
