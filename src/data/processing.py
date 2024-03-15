@@ -42,7 +42,7 @@ def normalize_and_add_scaling_channel(x: torch.Tensor, data_min = -0.001, data_m
 
 
 
-def load_data_dict(data_folder_path: str, annotation_dict: dict, tmin: float = 0, tlen: float = 5, labels: bool = False):
+def load_data_dict(data_folder_path: str, annotation_dict: dict, duration: float = 1, overlap: float = 0.5, stop_after = None):
     """Loads the data from the data folder.
     Parameters
     ----------
@@ -62,8 +62,13 @@ def load_data_dict(data_folder_path: str, annotation_dict: dict, tmin: float = 0
         The data dictionary.
     """
     data_dict = {}
+    
+    assert(duration == 1)
+    assert(overlap == 0.5)
 
+    l = 0
     for subject in tqdm(os.listdir(data_folder_path)):
+        l += 1 
         data_dict[subject] = {}
 
         for session in os.listdir(data_folder_path + subject):
@@ -73,22 +78,20 @@ def load_data_dict(data_folder_path: str, annotation_dict: dict, tmin: float = 0
             edf_file_path = data_folder_path + subject + '/' + session
             raw = get_raw(edf_file_path, filter=True)
 
-            if labels:
-                # TODO: remove try-except, was added to handle TUAR data
-                try:
-                    events, _ = mne.events_from_annotations(raw, event_id=annotation_dict, verbose='error')
-                    #events = events[np.isin(events[:, 2], list(annotation_dict.values()))]
-                except:
-                    print(f'No annotations in {subject} {session_name}')
-                    data_dict[subject].pop(session_name)
-                    continue
+            events, _ = mne.events_from_annotations(raw, event_id=annotation_dict, verbose='error')
+            epochs = mne.make_fixed_length_epochs(raw, duration=duration, preload=True, verbose='error', overlap=overlap)
 
-                tmax = tmin + tlen
-                epochs = mne.Epochs(raw, events=events, tmin=tmin, tmax=tmax, event_repeated='drop', verbose='error', baseline=(0,0))
+            freq = raw.info["sfreq"]
 
-                data_dict[subject][session_name]['y'] = epochs.events[:, 2]
-            else:
-                epochs = mne.make_fixed_length_epochs(raw, duration=tlen, preload=True, verbose='error')
+            target_annotations = []
+            for i, epoch in enumerate(epochs):
+                r = events[((i * (freq//2)) <= events[:,0]) & (events[:,0] < (i * (freq//2) + freq))][:,2]
+                target_annotation = [int(j in r) for j in range(len(annotation_dict))]
+
+                target_annotations.append(target_annotation)
+
+            data_dict[subject][session_name]['y'] = torch.tensor(target_annotations)
+
 
             X = epochs.get_data().astype(np.float32)
 
@@ -100,7 +103,9 @@ def load_data_dict(data_folder_path: str, annotation_dict: dict, tmin: float = 0
             X = normalize_and_add_scaling_channel(torch.tensor(X))
 
             data_dict[subject][session_name]['X'] = X
-
+        #break
+        if stop_after != None and l > stop_after:
+            break
     return data_dict
 
 
