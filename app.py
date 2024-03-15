@@ -1,4 +1,5 @@
 # app.py
+import mne
 import streamlit as st
 import pandas as pd
 import sys
@@ -26,7 +27,7 @@ from copy import deepcopy
 from model.model import BendrEncoder
 from model.model import Flatten
 from sklearn.cluster import KMeans
-from src.visualisation.visualisation import plot_latent_pca
+from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
 import icecream as ic
 import xgboost as xgb
 
@@ -157,8 +158,17 @@ def main():
     if edf_file_buffers:
         data_folder, file_paths = get_file_paths(edf_file_buffers)
         
-        
+        # if 'data_processed' in st.session_state:
+        #     st.write("Data has been processed")
+        #     df = st.session_state.data
+        #     start_time = st.slider('Select start time for plot', min_value=st.session_state.time_min, max_value=st.session_state.time_max, value=st.session_state.start_time)
+        #     st.session_state.start_time = start_time
+        #     fig = visualize_plot_from_eeg_data(st.session_state.data, st.session_state.start_time, DURATION)
+        #     st.pyplot(fig)
+
+        # elif st.button("Process data"):
         if st.button("Process data"):
+            st.session_state.data_processed = True
             st.write("Data processing initiated")
           
             # # 2: Chop the .edf data into 5 second windows
@@ -191,6 +201,31 @@ def main():
             for w_idx, l_idx in output:
                 time = w_idx * DURATION
                 st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+
+            # Visualize
+            data = mne.io.read_raw_edf(file_paths[0])
+            df = data.to_data_frame()
+            st.session_state.data = df
+            def draw_plot():
+                fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
+                st.pyplot(fig)
+                st.slider('Select start time for plot', 
+                            min_value=st.session_state.time_min, 
+                            max_value=st.session_state.time_max, 
+                            value=time_min,
+                            key='slider',
+                            on_change=draw_plot)
+            print(file_paths[0], data)
+            time_min = int(df['time'].min())
+            time_max = int(df['time'].max())
+            st.session_state.time_min = time_min
+            st.session_state.time_max = time_max
+            st.session_state.slider = time_min
+            draw_plot()
+            # st.session_state.start_time = start_time
+            # Placeholder for the plot
+            # plot_placeholder = st.empty()
+
 
             # # 4: Perform KMeans clustering on the latent representations
             # st.write("Running K-means with n=5 clusters")

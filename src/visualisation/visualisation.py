@@ -1,3 +1,6 @@
+from matplotlib.widgets import Slider
+import numpy as np
+import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
@@ -34,3 +37,49 @@ def plot_latent_pca(latent_pca, y_data, annotations, pca, first_index=0, second_
     ax[1].set_title("Explained Variance Ratio of Principal Components")
 
     plt.show()
+
+def visualize_plot_from_eeg_data(df, start_time, window_size):
+    # np.random.seed(0)
+    # time = np.linspace(0, 100, 1000)  # 1000 time points from 0 to 100 seconds
+    channels = ['Fp1', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'T7', 'C3', 'Cz', 'C4', 'T8', 'P7', 'P3', 'Pz', 'P4', 'P8', 'O1', 'O2']
+    # data = np.random.randn(1000, len(channels))  # Random data for 19 channels
+    # df = pd.DataFrame(data, columns=channels)
+    # df['time'] = time
+
+    # Create the main figure and axis
+    fig, ax = plt.subplots(figsize=(15, 10))
+    plt.subplots_adjust(bottom=0.25)
+
+    # Plot configuration
+    ax.set_xlabel('Time (s)')
+    ax.set_xlim(start_time, start_time + window_size)  # Initial x-axis limit
+
+    # Calculate the vertical displacement and set the vertical limits
+    n_rows = len(channels)
+    dy = (df[channels].min().min() - df[channels].max().max()) * 0.7
+    ax.set_ylim(-dy, n_rows * dy)
+
+    # Plot each channel with an offset
+    for i, channel in enumerate(channels):
+        ax.plot(df['time'], df[channel] + i * dy, label=channel)
+
+    # Set y-ticks to correspond to each channel, adjusting for the offsets
+    ax.set_yticks(np.arange(0, n_rows * dy, dy))
+    ax.set_yticklabels(channels)
+
+    # Add slider for adjusting x-axis range
+    slider_ax = plt.axes([0.2, 0.1, 0.65, 0.03], facecolor='lightgoldenrodyellow')
+    slider = Slider(slider_ax, 'Time', df['time'].min(), df['time'].max() - 10, valinit=0)
+
+    # Update function for the slider
+    def update(val):
+        start_time = slider.val
+        end_time = start_time + 10  # Adjust the window size as needed
+        ax.set_xlim(start_time, end_time)
+        fig.canvas.draw_idle()
+
+    slider.on_changed(update)
+
+    plt.legend()
+    # plt.show()
+    return fig
