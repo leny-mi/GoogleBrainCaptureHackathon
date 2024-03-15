@@ -63,7 +63,7 @@ def load_data_dict(data_folder_path: str, annotation_dict: dict, duration: float
     """
     data_dict = {}
     
-    assert(duration == 1)
+    #assert(duration == 1)
     assert(overlap == 0.5)
 
     l = 0
@@ -79,20 +79,20 @@ def load_data_dict(data_folder_path: str, annotation_dict: dict, duration: float
             raw = get_raw(edf_file_path, filter=True)
 
             events, _ = mne.events_from_annotations(raw, event_id=annotation_dict, verbose='error')
-            epochs = mne.make_fixed_length_epochs(raw, duration=duration, preload=True, verbose='error', overlap=overlap)
+            epochs = mne.make_fixed_length_epochs(raw, duration=duration, preload=True, verbose='error', overlap=duration*overlap)
 
             freq = raw.info["sfreq"]
 
             target_annotations = []
             for i, epoch in enumerate(epochs):
-                r = events[((i * (freq//2)) <= events[:,0]) & (events[:,0] < (i * (freq//2) + freq))][:,2]
+                r = events[((i * ((freq*duration)//2)) <= events[:,0]) & (events[:,0] < (i * ((freq*duration)//2) + freq*duration))][:,2]
                 target_annotation = [int(j in r) for j in range(len(annotation_dict))]
 
                 target_annotations.append(target_annotation)
 
             data_dict[subject][session_name]['y'] = torch.tensor(target_annotations)
 
-
+            
             X = epochs.get_data().astype(np.float32)
 
             if X.shape[0] == 0:
