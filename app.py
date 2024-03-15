@@ -1,4 +1,6 @@
 # app.py
+import math
+import mne
 import streamlit as st
 import pandas as pd
 import sys
@@ -13,7 +15,12 @@ import torch
 from tqdm import tqdm
 from copy import deepcopy
 from model.model import BendrEncoder
+from model.model import Flatten
+from sklearn.cluster import KMeans
+from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
+import icecream as ic
 import xgboost as xgb
+from plotly.graph_objs import Scatter, Layout, YAxis, Annotation, Annotations, Font, Data, Figure
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
 DURATION = 10
@@ -129,6 +136,40 @@ def plot_clusters(components, labels):
 
     st.pyplot(fig)
 
+def plot_raw(raw, st, range_from, range_to):
+
+    picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False, stim=False)
+    start, stop = raw.time_as_index([range_from, range_to])
+
+    n_channels = min(len(picks), 20)
+    data, times = raw[picks[:n_channels], start:stop]
+    ch_names = [raw.info['ch_names'][p] for p in picks[:n_channels]]
+
+    step = 1. / n_channels
+    kwargs = dict(domain=[1 - step, 1], showticklabels=False, zeroline=False, showgrid=False)
+
+    # create objects for layout and traces
+    layout = Layout(yaxis=YAxis(kwargs), showlegend=False)
+    traces = [Scatter(x=times, y=data.T[:, 0])]
+
+    # loop over the channels
+    for ii in range(1, n_channels):
+        kwargs.update(domain=[1 - (ii + 1) * step, 1 - ii * step])
+        layout.update({'yaxis%d' % (ii + 1): YAxis(kwargs), 'showlegend': False})
+        traces.append(Scatter(x=times, y=data.T[:, ii], yaxis='y%d' % (ii + 1)))
+
+    # add channel names using Annotations
+    annotations = Annotations([Annotation(x=-0.06, y=0, xref='paper',   yref='y%d' % (ii + 1),
+                                        text=ch_name, font=Font(size=9), showarrow=False)
+                            for ii, ch_name in enumerate(ch_names)])
+    layout.update(annotations=annotations)
+
+    # set the size of the figure and plot it
+    layout.update(autosize=False, width=1000, height=700)
+    fig = Figure(data=Data(traces), layout=layout)
+    st.plotly_chart(fig)
+    #py.iplot(fig, filename='shared xaxis')
+
 def main():
     st.title('Demonstration of EEG data pipeline')
     st.write("""
@@ -142,8 +183,17 @@ def main():
     if edf_file_buffers:
         data_folder, file_paths = get_file_paths(edf_file_buffers)
         
-        
+        # if 'data_processed' in st.session_state:
+        #     st.write("Data has been processed")
+        #     df = st.session_state.data
+        #     start_time = st.slider('Select start time for plot', min_value=st.session_state.time_min, max_value=st.session_state.time_max, value=st.session_state.start_time)
+        #     st.session_state.start_time = start_time
+        #     fig = visualize_plot_from_eeg_data(st.session_state.data, st.session_state.start_time, DURATION)
+        #     st.pyplot(fig)
+
+        # elif st.button("Process data"):
         if st.button("Process data"):
+            st.session_state.data_processed = True
             st.write("Data processing initiated")
           
             # # 2: Chop the .edf data into 5 second windows
@@ -175,7 +225,41 @@ def main():
             print(output)
             for w_idx, l_idx in output:
                 time = w_idx * DURATION
-                st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+                # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+
+            # Visualize
+            data = mne.io.read_raw_edf(file_paths[0], preload=True)
+            # df = data.to_data_frame()
+            # st.session_state.data = df
+            def draw_plot():
+                # fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
+                # st.pyplot(fig)
+                plot_raw(data, st, st.session_state.slider, st.session_state.slider + DURATION)
+                st.slider('Select start time for plot', 
+                            min_value=st.session_state.time_min, 
+                            max_value=st.session_state.time_max,
+                            key='slider',
+                            on_change=draw_plot)
+                for w_idx, l_idx in output:
+                    time = w_idx * DURATION // 2
+                    # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
+                    st.button(label=f"{tuh_eeg_index_to_articfact_annotations[l_idx]}: {time} - {time + DURATION}",
+                                on_click=change_time,
+                                args=(time,))
+            def change_time(time):
+                st.session_state.slider = time
+                draw_plot()
+            print(file_paths[0], data)
+            time_min = 0
+            time_max = int(data.times[-1])
+            st.session_state.time_min = time_min
+            st.session_state.time_max = time_max
+            st.session_state.slider = time_min
+            draw_plot()
+            # st.session_state.start_time = start_time
+            # Placeholder for the plot
+            # plot_placeholder = st.empty()
+
 
             # # 4: Perform KMeans clustering on the latent representations
             # st.write("Running K-means with n=5 clusters")
