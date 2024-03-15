@@ -67,19 +67,6 @@ def visualize_plot_from_eeg_data(df, start_time, window_size):
     ax.set_yticks(np.arange(0, n_rows * dy, dy))
     ax.set_yticklabels(channels)
 
-    # Add slider for adjusting x-axis range
-    slider_ax = plt.axes([0.2, 0.1, 0.65, 0.03], facecolor='lightgoldenrodyellow')
-    slider = Slider(slider_ax, 'Time', df['time'].min(), df['time'].max() - 10, valinit=0)
-
-    # Update function for the slider
-    def update(val):
-        start_time = slider.val
-        end_time = start_time + 10  # Adjust the window size as needed
-        ax.set_xlim(start_time, end_time)
-        fig.canvas.draw_idle()
-
-    slider.on_changed(update)
-
-    plt.legend()
+    # plt.legend()
     # plt.show()
     return fig
