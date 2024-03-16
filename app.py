@@ -139,7 +139,7 @@ def plot_clusters(components, labels):
 def plot_raw(raw, st, range_from, range_to):
 
     picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False, stim=False)
-    start, stop = raw.time_as_index([range_from, range_to])
+    start, stop = raw.time_as_index([max(0, range_from - 30), min(raw.times[-1], range_to + 30)])
 
     n_channels = min(len(picks), 20)
     data, times = raw[picks[:n_channels], start:stop]
@@ -149,7 +149,13 @@ def plot_raw(raw, st, range_from, range_to):
     kwargs = dict(domain=[1 - step, 1], showticklabels=False, zeroline=False, showgrid=False)
 
     # create objects for layout and traces
-    layout = Layout(yaxis=YAxis(kwargs), showlegend=False)
+    layout = Layout(
+        yaxis=YAxis(kwargs), 
+        showlegend=False,
+        xaxis=dict(
+            range=[range_from, range_to]
+        )
+    )
     traces = [Scatter(x=times, y=data.T[:, 0])]
 
     # loop over the channels
@@ -234,7 +240,7 @@ def main():
             def draw_plot():
                 # fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
                 # st.pyplot(fig)
-                plot_raw(data, st, st.session_state.slider, st.session_state.slider + DURATION)
+                plot_raw(data, st, st.session_state.slider - DURATION // 2, st.session_state.slider + DURATION // 2)
                 st.slider('Select start time for plot', 
                             min_value=st.session_state.time_min, 
                             max_value=st.session_state.time_max,
