@@ -2,6 +2,7 @@
 import mne
 from pdfreport.generatePdf import Report
 import streamlit as st
+#st.set_page_config(layout="wide")
 import sys
 import os
 sys.path.append(os.getcwd() + '/')
@@ -83,6 +84,7 @@ def load_model(device='cpu'):
     # Load the pretrained model
     encoder.load_state_dict(deepcopy(torch.load("encoder.pt", map_location=device)))
     encoder = encoder.to(device)
+    encoder.eval()
 
     return encoder
 
@@ -215,7 +217,7 @@ def process_input(data_folder):
                 # output.append((w_idx, l_idx))
                 output.append(Observation(w_idx, l_idx, tuh_eeg_index_to_articfact_annotations[l_idx]))
 
-    return output
+    return tuple(output)
 
 @st.cache_data
 def cached_read_raw_edf(file_path):
