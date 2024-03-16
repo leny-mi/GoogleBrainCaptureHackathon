@@ -57,15 +57,18 @@ class Report(FPDF):
 
     def main(self, ):
         self.add_page()
-        self._logo(x= 5, y = 5, w = 50, h = 25)
+        # self._logo(x= 5, y = 5, w = 50, h = 25)
         self._title(y = 40, fontSize = 25)
         self._annotationMetaData(verticalSpace = 20, lineSpacing = 6,)
         self._displayArtifacts(verticalSpace=20, lineSpacing=6)
 
-    def __call__(self, name:str, dest:int= ''):
-        assert isinstance(name, str) and name[-4:] == ".pdf", "Name has to be string and and with '.pdf'"
+
+    def __call__(self, name:str, dest:str= 'S'):
+        # assert isinstance(name, str) and name[-4:] == ".pdf", "Name has to be string and and with '.pdf'"
         self.main()
-        self.output(name = name, dest = dest)
+        # self.output(name = name)
+
+        return self.output(name = name, dest = dest)
 
 if __name__ == '__main__':
     artifacts = [
