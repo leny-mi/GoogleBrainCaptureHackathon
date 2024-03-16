@@ -1,8 +1,6 @@
 # app.py
-import math
 import mne
 import streamlit as st
-import pandas as pd
 import sys
 import os
 sys.path.append(os.getcwd() + '/')
@@ -18,7 +16,6 @@ from model.model import BendrEncoder
 from model.model import Flatten
 from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
-import icecream as ic
 import xgboost as xgb
 from plotly.graph_objs import Scatter, Layout, YAxis, Annotation, Annotations, Font, Data, Figure
 
@@ -139,7 +136,7 @@ def plot_clusters(components, labels):
 def plot_raw(raw, st, range_from, range_to):
 
     picks = mne.pick_types(raw.info, meg=False, eeg=True, eog=False, stim=False)
-    start, stop = raw.time_as_index([range_from, range_to])
+    start, stop = raw.time_as_index([max(0, range_from - 30), min(raw.times[-1], range_to + 30)])
 
     n_channels = min(len(picks), 20)
     data, times = raw[picks[:n_channels], start:stop]
@@ -149,7 +146,13 @@ def plot_raw(raw, st, range_from, range_to):
     kwargs = dict(domain=[1 - step, 1], showticklabels=False, zeroline=False, showgrid=False)
 
     # create objects for layout and traces
-    layout = Layout(yaxis=YAxis(kwargs), showlegend=False)
+    layout = Layout(
+        yaxis=YAxis(kwargs), 
+        showlegend=False,
+        xaxis=dict(
+            range=[range_from, range_to]
+        )
+    )
     traces = [Scatter(x=times, y=data.T[:, 0])]
 
     # loop over the channels
@@ -169,6 +172,23 @@ def plot_raw(raw, st, range_from, range_to):
     fig = Figure(data=Data(traces), layout=layout)
     st.plotly_chart(fig)
     #py.iplot(fig, filename='shared xaxis')
+
+class Observation:
+    def __init__(self, window_idx, label_idx, label):
+        self.window_idx = window_idx
+        self.label_idx = label_idx
+        self.label = label
+        self.accepted = False
+        self.button = None
+
+    def __str__(self):
+        return f"{self.label}: {self.start} - {self.end}"
+    
+    def accept(self):
+        self.accepted = True
+
+    def reject(self):
+        self.accepted = False
 
 def main():
     st.title('Demonstration of EEG data pipeline')
@@ -221,33 +241,44 @@ def main():
             for w_idx, window in enumerate(classification):
                 for l_idx, label in enumerate(window):
                     if label == 1:
-                        output.append((w_idx, l_idx))
+                        # output.append((w_idx, l_idx))
+                        output.append(Observation(w_idx, l_idx, tuh_eeg_index_to_articfact_annotations[l_idx]))
             print(output)
-            for w_idx, l_idx in output:
-                time = w_idx * DURATION
-                # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
 
             # Visualize
             data = mne.io.read_raw_edf(file_paths[0], preload=True)
             # df = data.to_data_frame()
             # st.session_state.data = df
             def draw_plot():
+                # print("Drawing plot", st.session_state.slider, len(data), output)
                 # fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
                 # st.pyplot(fig)
-                plot_raw(data, st, st.session_state.slider, st.session_state.slider + DURATION)
+                plot_raw(data, st, st.session_state.slider - DURATION // 2, st.session_state.slider + DURATION // 2)
                 st.slider('Select start time for plot', 
                             min_value=st.session_state.time_min, 
                             max_value=st.session_state.time_max,
                             key='slider',
                             on_change=draw_plot)
-                for w_idx, l_idx in output:
-                    time = w_idx * DURATION // 2
+                col1, col2 = st.columns(2)
+                for obs in output:
+                    time = obs.window_idx * DURATION // 2
                     # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
-                    st.button(label=f"{tuh_eeg_index_to_articfact_annotations[l_idx]}: {time} - {time + DURATION}",
+                    # with col1:
+                    col1.button(label=f"{obs.label}: {time} - {time + DURATION}",
                                 on_click=change_time,
                                 args=(time,))
+                    # with col2:
+                    col2.button("Accept" if not obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary', on_click=change_observation_verdict, args=(obs,))
             def change_time(time):
                 st.session_state.slider = time
+                draw_plot()
+            def change_observation_verdict(obs):
+                print("Changing observation verdict")
+                if obs.accepted:
+                    obs.reject()
+                else:
+                    obs.accept()
+                print(obs.accepted)
                 draw_plot()
             print(file_paths[0], data)
             time_min = 0
@@ -276,6 +307,12 @@ def main():
             # # Plot clusters
             # plot_clusters(components, labels)
 
-
+# Custom CSS to style the buttons
+st.markdown("""
+<style>
+button[kind="primary"] {
+    background-color: grey;
+}
+</style>""", unsafe_allow_html=True)
 
 main()
