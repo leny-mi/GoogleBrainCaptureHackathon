@@ -1,8 +1,6 @@
 # app.py
-import math
 import mne
 import streamlit as st
-import pandas as pd
 import sys
 import os
 sys.path.append(os.getcwd() + '/')
@@ -18,7 +16,6 @@ from model.model import BendrEncoder
 from model.model import Flatten
 from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
-import icecream as ic
 import xgboost as xgb
 from plotly.graph_objs import Scatter, Layout, YAxis, Annotation, Annotations, Font, Data, Figure
 
@@ -252,8 +249,8 @@ def main():
             data = mne.io.read_raw_edf(file_paths[0], preload=True)
             # df = data.to_data_frame()
             # st.session_state.data = df
-            col1, col2 = st.columns(2)
             def draw_plot():
+                # print("Drawing plot", st.session_state.slider, len(data), output)
                 # fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
                 # st.pyplot(fig)
                 plot_raw(data, st, st.session_state.slider - DURATION // 2, st.session_state.slider + DURATION // 2)
@@ -262,17 +259,26 @@ def main():
                             max_value=st.session_state.time_max,
                             key='slider',
                             on_change=draw_plot)
+                col1, col2 = st.columns(2)
                 for obs in output:
                     time = obs.window_idx * DURATION // 2
                     # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
-                    with col1:
-                        st.button(label=f"{obs.label}: {time} - {time + DURATION}",
-                                    on_click=change_time,
-                                    args=(time,))
-                    with col2:
-                        st.button("Accept" if obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary')
+                    # with col1:
+                    col1.button(label=f"{obs.label}: {time} - {time + DURATION}",
+                                on_click=change_time,
+                                args=(time,))
+                    # with col2:
+                    col2.button("Accept" if not obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary', on_click=change_observation_verdict, args=(obs,))
             def change_time(time):
                 st.session_state.slider = time
+                draw_plot()
+            def change_observation_verdict(obs):
+                print("Changing observation verdict")
+                if obs.accepted:
+                    obs.reject()
+                else:
+                    obs.accept()
+                print(obs.accepted)
                 draw_plot()
             print(file_paths[0], data)
             time_min = 0
