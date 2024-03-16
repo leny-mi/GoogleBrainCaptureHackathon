@@ -1,5 +1,6 @@
 # app.py
 import mne
+from pdfreport.generatePdf import Report
 import streamlit as st
 import sys
 import os
@@ -18,6 +19,8 @@ from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
 import xgboost as xgb
 from plotly.graph_objs import Scatter, Layout, YAxis, Annotation, Annotations, Font, Data, Figure
+
+from datetime import date
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
 DURATION = 10
@@ -190,6 +193,12 @@ class Observation:
     def reject(self):
         self.accepted = False
 
+
+def download_custom_pdf(artifacts, annotationInfo):
+    report = Report(annotationInfo=annotationInfo, artifacts=artifacts)
+
+    st.download_button(label="Download Report", data=report().encode("latin-1"), file_name="EEG_Report.pdf")
+
 def main():
     st.title('Demonstration of EEG data pipeline')
     st.write("""
@@ -269,6 +278,13 @@ def main():
                                 args=(time,))
                     # with col2:
                     col2.button("Accept" if not obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary', on_click=change_observation_verdict, args=(obs,))
+
+                artifacts = [tuple(map(str, (o.label, o.window_idx * DURATION // 2, (o.window_idx + 1) * DURATION // 2))) for o in output]
+                annotationInfo = {
+                    "annotationDate": date(year=2024, month=3, day=16),
+                    "annotater": "bEEGees Hackathon Team"
+                }
+                download_custom_pdf(artifacts=artifacts, annotationInfo=annotationInfo)
             def change_time(time):
                 st.session_state.slider = time
                 draw_plot()

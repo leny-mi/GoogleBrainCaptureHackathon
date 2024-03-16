@@ -17,7 +17,7 @@ class Report(FPDF):
         assert 'annotationDate' in self.annotationInfo, "You have to supply annotation date"
     
     def _logo(self, x, y, w, h, ):
-        self.image(name = "pdfreport/images/BCLogo.png", x = x, y = y, w = w, h = h, link = 'https://braincapture.dk')
+        self.image(name = "https://usercontent.one/wp/braincapture.dk/wp-content/uploads/2023/03/BC_logo_9a_bluemb-1.png", x = x, y = y, w = w, h = h, link = 'https://braincapture.dk')
 
     def _title(self, y, fontSize):
         self.set_font(self.fontFamily, 'B', fontSize)
@@ -62,10 +62,13 @@ class Report(FPDF):
         self._annotationMetaData(verticalSpace = 20, lineSpacing = 6,)
         self._displayArtifacts(verticalSpace=20, lineSpacing=6)
 
-    def __call__(self, name:str, dest:int= ''):
-        assert isinstance(name, str) and name[-4:] == ".pdf", "Name has to be string and and with '.pdf'"
+
+    def __call__(self, name:str = "", dest:str= 'S'):
+        # assert isinstance(name, str) and name[-4:] == ".pdf", "Name has to be string and and with '.pdf'"
         self.main()
-        self.output(name = name, dest = dest)
+        # self.output(name = name)
+
+        return self.output(name = name, dest = dest)
 
 if __name__ == '__main__':
     artifacts = [
