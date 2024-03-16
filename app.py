@@ -92,28 +92,24 @@ def make_dir(dir):
     except FileExistsError:
         pass
 
-def get_file_paths(edf_file_buffers):
+def get_file_paths(edf_file_buffer):
     """
     input: edf_file_buffers: list of files uploaded by user
 
     output: paths: paths to the files
     """
-    paths = []
     # make tempoary directory to store the files
     temp_dir = tempfile.mkdtemp()
-    print(temp_dir)
-    for edf_file_buffer in edf_file_buffers:
-        folder_name = os.path.join(temp_dir, edf_file_buffer.name[:4])
-        make_dir(folder_name)
-        # make tempoary file
-        path = os.path.join(folder_name , edf_file_buffer.name)
-        # write bytesIO object to file
-        with open(path, 'wb') as f:
-            f.write(edf_file_buffer.getvalue())
+    
+    folder_name = os.path.join(temp_dir, edf_file_buffer.name[:4])
+    make_dir(folder_name)
+    # make tempoary file
+    path = os.path.join(folder_name , edf_file_buffer.name)
+    # write bytesIO object to file
+    with open(path, 'wb') as f:
+        f.write(edf_file_buffer.getvalue())
 
-        paths.append(path)
-
-    return temp_dir + '/', paths
+    return temp_dir + '/', path
 
 def plot_clusters(components, labels):
     """
@@ -171,7 +167,7 @@ def plot_raw(raw, st, range_from, range_to):
     layout.update(annotations=annotations)
 
     # set the size of the figure and plot it
-    layout.update(autosize=False, width=1000, height=700)
+    layout.update(autosize=True)
     fig = Figure(data=Data(traces), layout=layout)
     st.plotly_chart(fig)
     #py.iplot(fig, filename='shared xaxis')
@@ -181,7 +177,7 @@ class Observation:
         self.window_idx = window_idx
         self.label_idx = label_idx
         self.label = label
-        self.accepted = False
+        self.accepted = True
         self.button = None
 
     def __str__(self):
@@ -194,134 +190,111 @@ class Observation:
         self.accepted = False
 
 
+@st.cache_data
 def download_custom_pdf(artifacts, annotationInfo):
     report = Report(annotationInfo=annotationInfo, artifacts=artifacts)
+    return report().encode("latin-1")
 
-    st.download_button(label="Download Report", data=report().encode("latin-1"), file_name="EEG_Report.pdf")
+# # 3: Load the model and generate latent representations
+encoder = load_model(device)   
+
+@st.cache_data
+def process_input(data_folder):
+    print("HElloooo", data_folder)
+    data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=tuh_eeg_artefact_annotations, stop_after=None, duration=DURATION)
+    all_subjects = list(data_dict.keys())
+    X, _ = get_data(data_dict, all_subjects)
+
+    latent_representations = generate_latent_representations(X, encoder, device=device)
+    classification = classify(latent_representations)
+    
+    output = []
+    for w_idx, window in enumerate(classification):
+        for l_idx, label in enumerate(window):
+            if label == 1:
+                # output.append((w_idx, l_idx))
+                output.append(Observation(w_idx, l_idx, tuh_eeg_index_to_articfact_annotations[l_idx]))
+
+    return output
+
+@st.cache_data
+def cached_read_raw_edf(file_path):
+    return mne.io.read_raw_edf(file_path, preload=True)
+
 
 def main():
-    st.title('Demonstration of EEG data pipeline')
+    st.title('Analyzer for bEEGees')
     st.write("""
-             This is a simple app for visualising and analysing EEG data. Start by uploading the .EDF files you want to analyse.
-             """)
+Analyze EEG recordings to identify regions of interest. Powered by GCP.""")
     
     # 1: Upload EDF files
-    edf_file_buffers = st.file_uploader('Upload .EDF files', type='edf', accept_multiple_files=True)
+    edf_file_buffers = st.file_uploader('Upload .EDF files', type='edf', accept_multiple_files=False)
     
 
     if edf_file_buffers:
-        data_folder, file_paths = get_file_paths(edf_file_buffers)
+        if 'data_folder' not in st.session_state:
+
+            data_folder, file_path = get_file_paths(edf_file_buffers)
+            st.session_state.data_folder = data_folder
+            st.session_state.file_path = file_path
+
+        st.session_state.data_processed = True
+
+        st.header("Detected Regions of Interest")
+
+        data = cached_read_raw_edf(st.session_state.file_path)
+
+        if 'time_min' not in st.session_state:
+            st.session_state.time_min = 0
+            st.session_state.time_max = int(data.times[-1])
+            st.session_state.slider = 0
         
-        # if 'data_processed' in st.session_state:
-        #     st.write("Data has been processed")
-        #     df = st.session_state.data
-        #     start_time = st.slider('Select start time for plot', min_value=st.session_state.time_min, max_value=st.session_state.time_max, value=st.session_state.start_time)
-        #     st.session_state.start_time = start_time
-        #     fig = visualize_plot_from_eeg_data(st.session_state.data, st.session_state.start_time, DURATION)
-        #     st.pyplot(fig)
+        col1, col2 = st.columns(2)
 
-        # elif st.button("Process data"):
-        if st.button("Process data"):
-            st.session_state.data_processed = True
-            st.write("Data processing initiated")
-          
-            # # 2: Chop the .edf data into 5 second windows
+        def change_time(time):
+            st.session_state.slider = time
 
-            # Change annnotation dictionary
+        def change_observation_verdict(obs):
+            print("Changing observation verdict")
+            if obs.accepted:
+                obs.reject()
+            else:
+                obs.accept()
 
-            data_dict = load_data_dict(data_folder_path=data_folder, annotation_dict=tuh_eeg_artefact_annotations, stop_after=None, duration=DURATION)
-            all_subjects = list(data_dict.keys())
-            print(all_subjects)
-            print(data_dict)
-            X, _ = get_data(data_dict, all_subjects)
+        if 'output' not in st.session_state:
+            st.session_state.output = process_input(data_folder=st.session_state.data_folder)
 
-            # # 3: Load the model and generate latent representations
-            encoder = load_model(device)   
-            latent_representations = generate_latent_representations(X, encoder, device=device)
-
-            print(latent_representations)
-
-            classification = classify(latent_representations)
-
-            print(classification)
+        for obs in st.session_state.output:
+            time = obs.window_idx * DURATION // 2
+            # with col1:
+            col1.button(label=f"{obs.label}: {time} - {time + DURATION}",
+                        on_click=change_time,
+                        args=(time,))
+            # with col2:
+            col2.button("Accept" if not obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary', on_click=change_observation_verdict, args=(obs,))
 
 
-            output = []
-            for w_idx, window in enumerate(classification):
-                for l_idx, label in enumerate(window):
-                    if label == 1:
-                        # output.append((w_idx, l_idx))
-                        output.append(Observation(w_idx, l_idx, tuh_eeg_index_to_articfact_annotations[l_idx]))
-            print(output)
+        st.header("EEG Signals")
 
-            # Visualize
-            data = mne.io.read_raw_edf(file_paths[0], preload=True)
-            # df = data.to_data_frame()
-            # st.session_state.data = df
-            def draw_plot():
-                # print("Drawing plot", st.session_state.slider, len(data), output)
-                # fig = visualize_plot_from_eeg_data(df, st.session_state.slider, DURATION)
-                # st.pyplot(fig)
-                plot_raw(data, st, st.session_state.slider - DURATION // 2, st.session_state.slider + DURATION // 2)
-                st.slider('Select start time for plot', 
-                            min_value=st.session_state.time_min, 
-                            max_value=st.session_state.time_max,
-                            key='slider',
-                            on_change=draw_plot)
-                col1, col2 = st.columns(2)
-                for obs in output:
-                    time = obs.window_idx * DURATION // 2
-                    # st.write(f"Between {time} and {time + DURATION} we suspect {tuh_eeg_index_to_articfact_annotations[l_idx]}")
-                    # with col1:
-                    col1.button(label=f"{obs.label}: {time} - {time + DURATION}",
-                                on_click=change_time,
-                                args=(time,))
-                    # with col2:
-                    col2.button("Accept" if not obs.accepted else "Reject", key=f"button_{obs.window_idx}_{obs.label_idx}", type='primary', on_click=change_observation_verdict, args=(obs,))
-
-                artifacts = [tuple(map(str, (o.label, o.window_idx * DURATION // 2, (o.window_idx + 1) * DURATION // 2))) for o in output]
-                annotationInfo = {
-                    "annotationDate": date(year=2024, month=3, day=16),
-                    "annotater": "bEEGees Hackathon Team"
-                }
-                download_custom_pdf(artifacts=artifacts, annotationInfo=annotationInfo)
-            def change_time(time):
-                st.session_state.slider = time
-                draw_plot()
-            def change_observation_verdict(obs):
-                print("Changing observation verdict")
-                if obs.accepted:
-                    obs.reject()
-                else:
-                    obs.accept()
-                print(obs.accepted)
-                draw_plot()
-            print(file_paths[0], data)
-            time_min = 0
-            time_max = int(data.times[-1])
-            st.session_state.time_min = time_min
-            st.session_state.time_max = time_max
-            st.session_state.slider = time_min
-            draw_plot()
-            # st.session_state.start_time = start_time
-            # Placeholder for the plot
-            # plot_placeholder = st.empty()
+        st.slider('Select start time for plot', 
+            min_value=st.session_state.time_min, 
+            max_value=st.session_state.time_max,
+            disabled=True,
+            label_visibility="collapsed",
+            key='slider')
+        
+        plot_raw(data, st, st.session_state.slider - DURATION // 2, st.session_state.slider + DURATION // 2)
 
 
-            # # 4: Perform KMeans clustering on the latent representations
-            # st.write("Running K-means with n=5 clusters")
-            # kmeans = KMeans(n_clusters=5, random_state=42)
-            # kmeans.fit(latent_representations)
-            # labels = kmeans.labels_
+        artifacts = [tuple(map(str, (o.label, o.window_idx * DURATION // 2, (o.window_idx + 1) * DURATION // 2))) for o in st.session_state.output if o.accepted]
+        annotationInfo = {
+            "annotationDate": date(year=2024, month=3, day=16),
+            "annotater": "bEEGees Hackathon Team"
+        }
 
-            # # 5: Visualize the clusters using PCA 
-            # st.write("Visualising clusters using PCA")  
-            # # Apply PCA
-            # pca = PCA(n_components=2)
-            # components = pca.fit_transform(latent_representations)
+        data = download_custom_pdf(artifacts=artifacts, annotationInfo=annotationInfo)
+        st.download_button(label="Download Report", data=data, file_name="EEG_Report.pdf", use_container_width=True)
 
-            # # Plot clusters
-            # plot_clusters(components, labels)
 
 # Custom CSS to style the buttons
 st.markdown("""
