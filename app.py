@@ -1,8 +1,6 @@
 # app.py
 import mne
 from pdfreport.generatePdf import Report
-import streamlit as st
-#st.set_page_config(layout="wide")
 import sys
 import os
 sys.path.append(os.getcwd() + '/')
@@ -20,8 +18,9 @@ from sklearn.cluster import KMeans
 from src.visualisation.visualisation import plot_latent_pca, visualize_plot_from_eeg_data
 import xgboost as xgb
 from plotly.graph_objs import Scatter, Layout, YAxis, Annotation, Annotations, Font, Data, Figure
-
 from datetime import date
+import streamlit as st
+st.set_page_config(layout="wide")
 
 max_length = lambda raw : int(raw.n_times / raw.info['sfreq']) 
 DURATION = 10
@@ -171,7 +170,7 @@ def plot_raw(raw, st, range_from, range_to):
     # set the size of the figure and plot it
     layout.update(autosize=True)
     fig = Figure(data=Data(traces), layout=layout)
-    st.plotly_chart(fig)
+    st.plotly_chart(fig, use_container_width=True)
     #py.iplot(fig, filename='shared xaxis')
 
 class Observation:
